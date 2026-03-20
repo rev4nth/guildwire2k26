@@ -532,67 +532,299 @@ function ClaimsPage({ stageIndex, running, history }) {
   )
 }
 
-function AnalyticsPage({ totalProtected, claimsCount, riskLevel }) {
-  const barValues = useMemo(() => {
-    const map = {
-      Low: [75, 20, 5],
-      Medium: [40, 50, 10],
-      High: [20, 45, 35],
-    }
-    return map[riskLevel] || map.Medium
-  }, [riskLevel])
+function AnalyticsPage({
+  totalProtected,
+  claimsCount,
+  riskLevel,
+  protectedAmount,
+  scenarioStep,
+  scenarioRunning,
+  incomeLossDetected,
+}) {
+  const scenarioFinalDecision =
+    scenarioStep >= 4 && !scenarioRunning ? (incomeLossDetected ? 'Approved' : 'Rejected') : 'Pending'
 
-  const [low, medium, high] = barValues
-  const max = 100
+  const rainDetected = scenarioStep >= 1
+  const locationVerified = scenarioStep >= 2
+  const deliveryActivityStatus =
+    scenarioStep < 3 ? 'Checking…' : incomeLossDetected ? 'Delivery dropped' : 'Orders still active'
+
+  const forecast = useMemo(() => {
+    const base =
+      riskLevel === 'Low'
+        ? ['Low', 'Low', 'Low', 'Medium', 'Low', 'Low', 'Low']
+        : riskLevel === 'Medium'
+          ? ['Low', 'Medium', 'Medium', 'Medium', 'Low', 'Medium', 'High']
+          : ['Medium', 'High', 'High', 'High', 'Medium', 'High', 'Medium']
+
+    if (incomeLossDetected) {
+      return base.map((d, idx) => {
+        if (idx <= 2 && d === 'Low') return 'Medium'
+        if (idx <= 2 && d === 'Medium') return 'High'
+        return d
+      })
+    }
+
+    return base
+  }, [riskLevel, incomeLossDetected])
+
+  const zone = useMemo(() => {
+    const rainRisk = incomeLossDetected ? 78 : riskLevel === 'High' ? 66 : riskLevel === 'Medium' ? 52 : 38
+    const aqiRisk = incomeLossDetected ? 64 : riskLevel === 'High' ? 60 : riskLevel === 'Medium' ? 46 : 35
+    const floodProbability = incomeLossDetected ? 82 : riskLevel === 'High' ? 70 : riskLevel === 'Medium' ? 52 : 28
+    return { rainRisk, aqiRisk, floodProbability }
+  }, [incomeLossDetected, riskLevel])
+
+  const earnings = useMemo(() => {
+    const expectedIncome = 4800
+    const loss = incomeLossDetected ? 1600 : 0
+    const actualIncome = expectedIncome - loss
+    return { expectedIncome, actualIncome, lossDetected: incomeLossDetected }
+  }, [incomeLossDetected])
+
+  const fraud = useMemo(() => {
+    const suspiciousClaims = incomeLossDetected ? 6 : 2
+    const fraudClustersDetected = incomeLossDetected ? 2 : 1
+    const blockedClaims = incomeLossDetected ? 1 : 0
+    const confidence = scenarioFinalDecision === 'Pending' ? 86 : incomeLossDetected ? 93 : 91
+    return { suspiciousClaims, fraudClustersDetected, blockedClaims, confidence }
+  }, [incomeLossDetected, scenarioFinalDecision])
+
+  const riskPillTone = riskLevel === 'Low' ? 'green' : riskLevel === 'Medium' ? 'yellow' : 'red'
+  const forecastDays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 
   return (
     <PageContainer>
-      <div className="mb-5">
-        <div className="text-2xl font-semibold tracking-tight text-slate-900">Analytics</div>
-        <div className="mt-1 text-sm text-slate-600">Simple stats + a lightweight risk view.</div>
+      <div className="mb-5 flex items-start justify-between gap-4">
+        <div>
+          <div className="text-2xl font-semibold tracking-tight text-slate-900">Analytics</div>
+          <div className="mt-1 text-sm text-slate-600">Weekly forecasts, zone intelligence, and decision-ready signals.</div>
+        </div>
+        <Pill tone={riskPillTone}>Risk Engine: {riskLevel}</Pill>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-3">
+      <div className="grid gap-4 lg:grid-cols-3">
         <StatCard label="Total earnings protected" value={`₹${totalProtected}`} />
         <StatCard label="Number of claims" value={`${claimsCount}`} />
         <div className="rounded-2xl bg-white p-5 shadow-lg ring-1 ring-slate-200">
-          <div className="text-xs font-medium text-slate-600">Risk level</div>
-          <div className="mt-2 inline-flex items-center rounded-2xl px-3 py-2 text-sm font-semibold ring-1 bg-slate-50 text-slate-800 ring-slate-200">
-            {riskLevel}
+          <div className="text-xs font-medium text-slate-600">System confidence</div>
+          <div className="mt-2 text-2xl font-semibold text-slate-900">{fraud.confidence}%</div>
+          <div className="mt-2 text-xs text-slate-600">Multi-signal verification + anomaly checks</div>
+        </div>
+      </div>
+
+      <div className="mt-5 grid gap-4 lg:grid-cols-2">
+        {/* 1. Weekly Risk Forecast */}
+        <div className="rounded-3xl bg-white p-5 shadow-lg ring-1 ring-slate-200">
+          <div className="flex items-center justify-between gap-3">
+            <div className="text-sm font-semibold text-slate-900">Weekly Risk Forecast</div>
+            <div className="text-xs text-slate-600">Next 7 days</div>
           </div>
-          <div className="mt-2 text-xs text-slate-600">Derived from recent disruption patterns</div>
-          <div className="mt-3 flex gap-2">
-            <span className={cx('inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold ring-1', riskLevel === 'Low' ? 'bg-green-50 text-green-700 ring-green-200' : 'bg-slate-50 text-slate-700 ring-slate-200')}>Low</span>
-            <span className={cx('inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold ring-1', riskLevel === 'Medium' ? 'bg-yellow-50 text-yellow-700 ring-yellow-200' : 'bg-slate-50 text-slate-700 ring-slate-200')}>Medium</span>
-            <span className={cx('inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold ring-1', riskLevel === 'High' ? 'bg-blue-50 text-blue-700 ring-blue-200' : 'bg-slate-50 text-slate-700 ring-slate-200')}>High</span>
+
+          <div className="mt-5 grid grid-cols-7 gap-2">
+            {forecast.map((lvl, idx) => {
+              const tone = lvl === 'Low' ? 'green' : lvl === 'Medium' ? 'yellow' : 'red'
+              const bg =
+                tone === 'green'
+                  ? 'bg-green-50 ring-green-200'
+                  : tone === 'yellow'
+                    ? 'bg-yellow-50 ring-yellow-200'
+                    : 'bg-red-50 ring-red-200'
+              const fg =
+                tone === 'green'
+                  ? 'text-green-800'
+                  : tone === 'yellow'
+                    ? 'text-yellow-800'
+                    : 'text-red-800'
+
+              return (
+                <div key={`${lvl}-${idx}`} className={cx('rounded-2xl border p-2 ring-1 shadow-sm', bg)}>
+                  <div className="text-center text-[10px] font-semibold text-slate-600">{forecastDays[idx]}</div>
+                  <div className={cx('mt-2 text-center text-xs font-semibold', fg)}>{lvl}</div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+
+        {/* 2. Zone Risk Intelligence */}
+        <div className="rounded-3xl bg-white p-5 shadow-lg ring-1 ring-slate-200">
+          <div className="flex items-center justify-between gap-3">
+            <div className="text-sm font-semibold text-slate-900">Zone Risk Intelligence</div>
+            <div className="text-xs text-slate-600">Operating area signals</div>
+          </div>
+
+          <div className="mt-4 space-y-3">
+            <div className="rounded-2xl bg-slate-50 p-4 ring-1 ring-slate-200">
+              <div className="flex items-center justify-between gap-3">
+                <div className="text-sm font-semibold text-slate-900">Rain Risk</div>
+                <Pill tone={zone.rainRisk >= 70 ? 'red' : zone.rainRisk >= 50 ? 'yellow' : 'green'}>
+                  {zone.rainRisk}%
+                </Pill>
+              </div>
+              <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-slate-200">
+                <div
+                  className={cx(
+                    'h-full rounded-full transition-all',
+                    zone.rainRisk >= 70 ? 'bg-red-500' : zone.rainRisk >= 50 ? 'bg-yellow-500' : 'bg-green-500'
+                  )}
+                  style={{ width: `${zone.rainRisk}%` }}
+                />
+              </div>
+            </div>
+
+            <div className="rounded-2xl bg-slate-50 p-4 ring-1 ring-slate-200">
+              <div className="flex items-center justify-between gap-3">
+                <div className="text-sm font-semibold text-slate-900">AQI Risk</div>
+                <Pill tone={zone.aqiRisk >= 60 ? 'red' : zone.aqiRisk >= 45 ? 'yellow' : 'green'}>
+                  {zone.aqiRisk}%
+                </Pill>
+              </div>
+              <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-slate-200">
+                <div
+                  className={cx(
+                    'h-full rounded-full transition-all',
+                    zone.aqiRisk >= 60 ? 'bg-red-500' : zone.aqiRisk >= 45 ? 'bg-yellow-500' : 'bg-green-500'
+                  )}
+                  style={{ width: `${zone.aqiRisk}%` }}
+                />
+              </div>
+            </div>
+
+            <div className="rounded-2xl bg-slate-50 p-4 ring-1 ring-slate-200">
+              <div className="flex items-center justify-between gap-3">
+                <div className="text-sm font-semibold text-slate-900">Flood Probability</div>
+                <Pill tone={zone.floodProbability >= 70 ? 'red' : zone.floodProbability >= 45 ? 'yellow' : 'green'}>
+                  {zone.floodProbability}%
+                </Pill>
+              </div>
+              <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-slate-200">
+                <div
+                  className={cx(
+                    'h-full rounded-full transition-all',
+                    zone.floodProbability >= 70
+                      ? 'bg-red-500'
+                      : zone.floodProbability >= 45
+                        ? 'bg-yellow-500'
+                        : 'bg-green-500'
+                  )}
+                  style={{ width: `${zone.floodProbability}%` }}
+                />
+              </div>
+            </div>
           </div>
         </div>
       </div>
 
-      <div className="mt-5 rounded-3xl bg-white p-5 shadow-lg ring-1 ring-slate-200">
-        <div className="flex items-center justify-between gap-4">
-          <div className="text-sm font-semibold text-slate-900">Risk distribution</div>
-          <div className="text-xs text-slate-600">Simple div bars</div>
+      <div className="mt-4 grid gap-4 lg:grid-cols-2">
+        {/* 3. Earnings Impact Analysis */}
+        <div className="rounded-3xl bg-white p-5 shadow-lg ring-1 ring-slate-200">
+          <div className="text-sm font-semibold text-slate-900">Earnings Impact Analysis</div>
+          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+            <div className="rounded-2xl bg-slate-50 p-4 ring-1 ring-slate-200">
+              <div className="text-xs font-medium text-slate-600">Expected Income</div>
+              <div className="mt-2 text-xl font-semibold text-slate-900">₹{earnings.expectedIncome}</div>
+            </div>
+            <div className="rounded-2xl bg-slate-50 p-4 ring-1 ring-slate-200">
+              <div className="text-xs font-medium text-slate-600">Actual Income</div>
+              <div className="mt-2 text-xl font-semibold text-slate-900">₹{earnings.actualIncome}</div>
+            </div>
+            <div className="rounded-2xl bg-slate-50 p-4 ring-1 ring-slate-200">
+              <div className="text-xs font-medium text-slate-600">Loss Detected</div>
+              <div className="mt-2">
+                <Pill tone={earnings.lossDetected ? 'red' : 'green'}>
+                  {earnings.lossDetected ? 'Yes' : 'No'}
+                </Pill>
+              </div>
+            </div>
+            <div className="rounded-2xl bg-slate-50 p-4 ring-1 ring-slate-200">
+              <div className="text-xs font-medium text-slate-600">Protected Amount</div>
+              <div className="mt-2 text-xl font-semibold text-slate-900">₹{protectedAmount}</div>
+            </div>
+          </div>
         </div>
 
-        <div className="mt-6 grid grid-cols-3 gap-4 items-end">
-          <div className="flex flex-col gap-3">
-            <div className="rounded-2xl bg-green-50 ring-1 ring-green-200 p-3">
-              <div className="mx-auto w-6 rounded-full bg-green-500 transition-all" style={{ height: `${(low / max) * 160}px` }} />
+        {/* 4. Fraud Detection Analytics */}
+        <div className="rounded-3xl bg-white p-5 shadow-lg ring-1 ring-slate-200">
+          <div className="text-sm font-semibold text-slate-900">Fraud Detection Analytics</div>
+          <div className="mt-4 space-y-3">
+            <div className="flex items-center justify-between gap-4 rounded-2xl bg-slate-50 p-4 ring-1 ring-slate-200">
+              <div className="text-sm font-semibold text-slate-900">Suspicious Claims</div>
+              <Pill tone={fraud.suspiciousClaims >= 5 ? 'red' : fraud.suspiciousClaims >= 3 ? 'yellow' : 'green'}>
+                {fraud.suspiciousClaims}
+              </Pill>
             </div>
-            <div className="text-center text-xs font-medium text-slate-600">Low</div>
+
+            <div className="flex items-center justify-between gap-4 rounded-2xl bg-slate-50 p-4 ring-1 ring-slate-200">
+              <div className="text-sm font-semibold text-slate-900">Fraud clusters</div>
+              <Pill tone={fraud.fraudClustersDetected >= 2 ? 'yellow' : 'blue'}>{fraud.fraudClustersDetected}</Pill>
+            </div>
+
+            <div className="flex items-center justify-between gap-4 rounded-2xl bg-slate-50 p-4 ring-1 ring-slate-200">
+              <div className="text-sm font-semibold text-slate-900">Blocked claims</div>
+              <Pill tone={fraud.blockedClaims >= 1 ? 'yellow' : 'green'}>{fraud.blockedClaims}</Pill>
+            </div>
+
+            <div className="flex items-center justify-between gap-4 rounded-2xl bg-slate-50 p-4 ring-1 ring-slate-200">
+              <div className="text-sm font-semibold text-slate-900">System confidence</div>
+              <Pill tone="blue">{fraud.confidence}%</Pill>
+            </div>
           </div>
-          <div className="flex flex-col gap-3">
-            <div className="rounded-2xl bg-yellow-50 ring-1 ring-yellow-200 p-3">
-              <div className="mx-auto w-6 rounded-full bg-yellow-500 transition-all" style={{ height: `${(medium / max) * 160}px` }} />
+        </div>
+      </div>
+
+      <div className="mt-4 grid gap-4 lg:grid-cols-2">
+        {/* 5. System Intelligence Panel */}
+        <div className="rounded-3xl bg-white p-5 shadow-lg ring-1 ring-slate-200">
+          <div className="text-sm font-semibold text-slate-900">System Intelligence Panel</div>
+          <div className="mt-4 space-y-3">
+            <div className="flex items-center justify-between gap-4 rounded-2xl bg-slate-50 p-4 ring-1 ring-slate-200">
+              <div className="text-sm font-semibold text-slate-900">Risk Engine</div>
+              <Pill tone="green">Active</Pill>
             </div>
-            <div className="text-center text-xs font-medium text-slate-600">Medium</div>
+            <div className="flex items-center justify-between gap-4 rounded-2xl bg-slate-50 p-4 ring-1 ring-slate-200">
+              <div className="text-sm font-semibold text-slate-900">Fraud Engine</div>
+              <Pill tone="blue">Monitoring</Pill>
+            </div>
+            <div className="flex items-center justify-between gap-4 rounded-2xl bg-slate-50 p-4 ring-1 ring-slate-200">
+              <div className="text-sm font-semibold text-slate-900">Claim Engine</div>
+              <Pill tone={scenarioRunning ? 'yellow' : 'green'}>
+                {scenarioRunning ? 'Running' : 'Ready'}
+              </Pill>
+            </div>
           </div>
-          <div className="flex flex-col gap-3">
-            <div className="rounded-2xl bg-blue-50 ring-1 ring-blue-200 p-3">
-              <div className="mx-auto w-6 rounded-full bg-blue-500 transition-all" style={{ height: `${(high / max) * 160}px` }} />
+        </div>
+
+        {/* 6. Decision Explanation Panel */}
+        <div className="rounded-3xl bg-white p-5 shadow-lg ring-1 ring-slate-200">
+          <div className="text-sm font-semibold text-slate-900">Decision Explanation Panel</div>
+          <div className="mt-4 space-y-3">
+            <div className="flex items-center justify-between gap-4 rounded-2xl bg-slate-50 p-4 ring-1 ring-slate-200">
+              <div className="text-sm font-semibold text-slate-900">Rain detected</div>
+              <Pill tone={rainDetected ? 'blue' : 'green'}>{rainDetected ? 'Yes' : 'No'}</Pill>
             </div>
-            <div className="text-center text-xs font-medium text-slate-600">High</div>
+            <div className="flex items-center justify-between gap-4 rounded-2xl bg-slate-50 p-4 ring-1 ring-slate-200">
+              <div className="text-sm font-semibold text-slate-900">Location verified</div>
+              <Pill tone={locationVerified ? 'blue' : 'green'}>{locationVerified ? 'Verified' : 'Pending'}</Pill>
+            </div>
+            <div className="flex items-center justify-between gap-4 rounded-2xl bg-slate-50 p-4 ring-1 ring-slate-200">
+              <div className="text-sm font-semibold text-slate-900">Delivery activity status</div>
+              <Pill tone={scenarioStep >= 3 ? (incomeLossDetected ? 'yellow' : 'green') : 'blue'}>{deliveryActivityStatus}</Pill>
+            </div>
+            <div className="flex items-center justify-between gap-4 rounded-2xl bg-slate-50 p-4 ring-1 ring-slate-200">
+              <div className="text-sm font-semibold text-slate-900">Final decision</div>
+              <Pill
+                tone={
+                  scenarioFinalDecision === 'Approved'
+                    ? 'green'
+                    : scenarioFinalDecision === 'Rejected'
+                      ? 'red'
+                      : 'blue'
+                }
+              >
+                {scenarioFinalDecision}
+              </Pill>
+            </div>
           </div>
         </div>
       </div>
@@ -763,7 +995,17 @@ export default function App() {
           )}
           {activePage === 'policy' && <PolicyPage selected={selectedPlan} onSelect={setSelectedPlan} />}
           {activePage === 'claims' && <ClaimsPage stageIndex={claimStageIndex} running={claimRunning} history={claimHistory} />}
-          {activePage === 'analytics' && <AnalyticsPage totalProtected={earningsProtected} claimsCount={claimHistory.length} riskLevel={riskLevel} />}
+          {activePage === 'analytics' && (
+            <AnalyticsPage
+              totalProtected={earningsProtected}
+              claimsCount={claimHistory.length}
+              riskLevel={riskLevel}
+              protectedAmount={coverage}
+              scenarioStep={scenarioStep}
+              scenarioRunning={scenarioRunning}
+              incomeLossDetected={incomeLossDetected}
+            />
+          )}
         </div>
 
         <div className="mt-6 text-center text-xs text-slate-500">
